@@ -1,0 +1,19 @@
+{
+  "name": "nippo-assist",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply nippo-assist-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply nippo-assist-db --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260908.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0",
+    "wrangler": "4.129.1"
+  }
+}
