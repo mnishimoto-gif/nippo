@@ -5,6 +5,7 @@ const state = {
   tasks: [],
   logs: [],
   memo: "",
+  weeklyTasks: "",
 };
 
 let currentTab = "today";
@@ -60,14 +61,16 @@ function todayRange() {
 
 async function loadAll() {
   const { from, to } = todayRange();
-  const [tasksRes, logsRes, memoRes] = await Promise.all([
+  const [tasksRes, logsRes, memoRes, weeklyTasksRes] = await Promise.all([
     api("/tasks"),
     api(`/logs?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     api("/memo"),
+    api("/weekly-tasks"),
   ]);
   state.tasks = tasksRes.tasks;
   state.logs = logsRes.logs;
   state.memo = memoRes.content;
+  state.weeklyTasks = weeklyTasksRes.content;
 }
 
 function activeLog() {
@@ -180,6 +183,23 @@ function saveMemoDebounced(content, hintEl) {
   memoSaveTimer = setTimeout(async () => {
     try {
       await api("/memo", { method: "PUT", body: JSON.stringify({ content }) });
+      if (hintEl) {
+        hintEl.textContent = "保存しました";
+        setTimeout(() => { hintEl.textContent = ""; }, 1500);
+      }
+    } catch (e) {
+      if (hintEl) hintEl.textContent = "保存に失敗しました";
+    }
+  }, 500);
+}
+
+let weeklyTasksSaveTimer = null;
+function saveWeeklyTasksDebounced(content, hintEl) {
+  state.weeklyTasks = content;
+  clearTimeout(weeklyTasksSaveTimer);
+  weeklyTasksSaveTimer = setTimeout(async () => {
+    try {
+      await api("/weekly-tasks", { method: "PUT", body: JSON.stringify({ content }) });
       if (hintEl) {
         hintEl.textContent = "保存しました";
         setTimeout(() => { hintEl.textContent = ""; }, 1500);
@@ -312,6 +332,7 @@ function renderTodayTab(container) {
   });
 
   renderMemoBlock(container);
+  renderWeeklyTasksBlock(container);
 
   const logs = [...state.logs].sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
   const tBlock = document.createElement("div");
@@ -389,6 +410,20 @@ function renderMemoBlock(container) {
   ta.addEventListener("input", () => saveMemoDebounced(ta.value, hint));
 }
 
+function renderWeeklyTasksBlock(container) {
+  const block = document.createElement("div");
+  block.className = "block";
+  block.innerHTML = "<h2>週間タスク一覧表</h2>";
+  const ta = el(
+    `<textarea class="weekly-tasks" placeholder="日報の「週間タスク一覧表」欄に毎回引き継がれる内容です。進捗やステータスが変わったらここを更新してください">${esc(state.weeklyTasks)}</textarea>`
+  );
+  const hint = el('<div class="save-hint"></div>');
+  block.appendChild(ta);
+  block.appendChild(hint);
+  container.appendChild(block);
+  ta.addEventListener("input", () => saveWeeklyTasksDebounced(ta.value, hint));
+}
+
 function renderTasksTab(container) {
   const block = document.createElement("div");
   block.className = "block";
@@ -436,7 +471,7 @@ function renderTasksTab(container) {
 
 function renderReportModal() {
   const now = new Date();
-  const report = buildReport(state.tasks, state.logs, now);
+  const report = buildReport(state.tasks, state.logs, now, state.weeklyTasks);
   const backdrop = el('<div class="modal-backdrop"></div>');
   const modal = el(
     '<div class="modal">' +

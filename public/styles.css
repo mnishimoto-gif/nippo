@@ -134,6 +134,7 @@ section.panel { display: flex; flex-direction: column; gap: 18px; }
 .toggle-btn { flex: none; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: 7px; padding: 5px 10px; font-size: 12px; }
 
 textarea.memo { width: 100%; min-height: 46vh; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); border-radius: var(--radius-sm); padding: 12px; font-size: 14px; line-height: 1.7; resize: vertical; }
+textarea.weekly-tasks { width: 100%; min-height: 220px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); border-radius: var(--radius-sm); padding: 12px; font-size: 14px; line-height: 1.7; resize: vertical; }
 .save-hint { text-align: right; font-size: 11.5px; color: var(--text-muted); margin-top: 6px; min-height: 14px; }
 
 .login-wrap { min-height: 80vh; display: flex; align-items: center; justify-content: center; }

@@ -35,12 +35,18 @@ const FOOTER =
   "タスク名　完了予定日　進捗率　ステータス\n" +
   "------------------------------------------------------------\n";
 
+function footerWithWeeklyTasks(weeklyTasksContent) {
+  const trimmed = (weeklyTasksContent || "").trim();
+  return trimmed ? FOOTER + trimmed + "\n" : FOOTER;
+}
+
 /**
  * @param {{id:number, project:string, category:'作業'|'MTG', name:string}[]} tasks
  * @param {{id:number, taskId:number, startAt:string, endAt:string|null}[]} logs
  * @param {Date} now
+ * @param {string} [weeklyTasksContent] 前回保存済みの週間タスク一覧表の内容。区切り線の下に追記される
  */
-export function buildReport(tasks, logs, now = new Date()) {
+export function buildReport(tasks, logs, now = new Date(), weeklyTasksContent = "") {
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   const subject =
     "【日報】" +
@@ -60,7 +66,7 @@ export function buildReport(tasks, logs, now = new Date()) {
       "■本日の作業内容　本日記録された作業はありません\n\n\n" +
       NEXT_DAY_PLAN_DEFAULT +
       "\n\n" +
-      FOOTER;
+      footerWithWeeklyTasks(weeklyTasksContent);
     return { to: RECIPIENTS, subject, body };
   }
 
@@ -114,7 +120,7 @@ export function buildReport(tasks, logs, now = new Date()) {
     "\n\n\n" +
     NEXT_DAY_PLAN_DEFAULT +
     "\n\n" +
-    FOOTER;
+    footerWithWeeklyTasks(weeklyTasksContent);
 
   return { to: RECIPIENTS, subject, body };
 }

@@ -101,4 +101,32 @@ describe("buildReport", () => {
     const report = buildReport(tasks, twice, now);
     expect(report.body).toContain("・タスク管理（0.50h）");
   });
+
+  it("週間タスク一覧表の内容を指定しない場合、区切り線のみで従来通りの出力になる", () => {
+    const now = new Date(`${D}T09:00:00`);
+    const report = buildReport(tasks, [], now);
+    expect(
+      report.body.endsWith(
+        "タスク名　完了予定日　進捗率　ステータス\n------------------------------------------------------------\n"
+      )
+    ).toBe(true);
+  });
+
+  it("週間タスク一覧表の内容を渡すと、区切り線の下に追記される", () => {
+    const now = new Date(`${D}T09:00:00`);
+    const weeklyTasksContent =
+      "今週のタスク（09月14日-09月18日）\n・経理-支払請求書の処理　9/15　100％　9/15完了";
+    const report = buildReport(tasks, [], now, weeklyTasksContent);
+    expect(report.body).toContain(
+      "タスク名　完了予定日　進捗率　ステータス\n------------------------------------------------------------\n" +
+        weeklyTasksContent +
+        "\n"
+    );
+  });
+
+  it("週間タスク一覧表の内容の前後の余分な空行は取り除かれる", () => {
+    const now = new Date(`${D}T09:00:00`);
+    const report = buildReport(tasks, [], now, "\n\n・タスクA\n\n\n");
+    expect(report.body.endsWith("ステータス\n------------------------------------------------------------\n・タスクA\n")).toBe(true);
+  });
 });
