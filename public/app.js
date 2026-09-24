@@ -446,6 +446,8 @@ function renderReportModal() {
     '<div class="field-block"><div class="field-head"><span class="label">件名</span><button class="copy-btn" data-copy="subject">コピー</button></div><div class="field-body" id="fieldSubject"></div></div>' +
     '<div class="field-block"><div class="field-head"><span class="label">本文</span><button class="copy-btn" data-copy="body">コピー</button></div><div class="field-body mono" id="fieldBody"></div></div>' +
     '<button class="copy-all" id="copyAllBtn">宛先・件名・本文をまとめてコピー</button>' +
+    '<button class="gmail-draft-btn" id="gmailDraftBtn">📧 Gmail下書きを作成</button>' +
+    '<a class="gmail-draft-link" id="gmailDraftLink" href="#" target="_blank" rel="noopener"></a>' +
     '<div class="copied-flash" id="flash"></div>' +
     "</div></div>"
   );
@@ -460,6 +462,32 @@ function renderReportModal() {
   });
   modal.querySelector("#copyAllBtn").addEventListener("click", () => {
     copyText(`宛先：${report.to}\n件名：${report.subject}\n\n${report.body}`, flash);
+  });
+  const gmailBtn = modal.querySelector("#gmailDraftBtn");
+  const gmailLink = modal.querySelector("#gmailDraftLink");
+  gmailBtn.addEventListener("click", async () => {
+    gmailBtn.disabled = true;
+    gmailBtn.textContent = "作成中…";
+    gmailLink.textContent = "";
+    gmailLink.removeAttribute("href");
+    try {
+      const res = await api("/report/gmail-draft", {
+        method: "POST",
+        body: JSON.stringify({ to: report.to, subject: report.subject, body: report.body }),
+      });
+      flash.textContent = "Gmail下書きを作成しました";
+      gmailLink.href = res.url;
+      gmailLink.target = "_blank";
+      gmailLink.rel = "noopener";
+      gmailLink.textContent = "作成した下書きをGmailで開く →";
+      setTimeout(() => { if (flash) flash.textContent = ""; }, 2400);
+    } catch (err) {
+      flash.textContent = "Gmail下書きの作成に失敗しました";
+      setTimeout(() => { if (flash) flash.textContent = ""; }, 2400);
+    } finally {
+      gmailBtn.disabled = false;
+      gmailBtn.textContent = "📧 Gmail下書きを作成";
+    }
   });
   function close() { reportOpen = false; backdrop.remove(); }
   modal.querySelector(".modal-close").addEventListener("click", close);
