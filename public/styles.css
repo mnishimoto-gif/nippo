@@ -96,7 +96,31 @@ section.panel { display: flex; flex-direction: column; gap: 14px; }
 
 .cat-group + .cat-group { margin-top: 10px; }
 .cat-group-head { margin-bottom: 2px; }
-.task-subgroup-label { font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin: 6px 0 1px; }
+.task-subgroup-label {
+  display: flex; align-items: center; gap: 5px; width: 100%; text-align: left;
+  font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin: 6px 0 1px;
+  border: none; background: none; padding: 3px 0;
+}
+.subgroup-count { color: var(--text-muted); font-weight: 500; }
+
+.recent-row { margin-bottom: 10px; }
+.recent-label { font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; }
+.recent-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.recent-chip {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  border-radius: 999px; padding: 6px 11px 6px 6px; font-size: 12.5px; display: flex; align-items: center; gap: 6px;
+}
+.badge-mini { background: var(--primary-dim); color: var(--primary); font-size: 10.5px; font-weight: 700; padding: 2px 6px; border-radius: 999px; }
+
+.task-picker-controls { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.task-search {
+  width: 100%; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  border-radius: var(--radius-sm); padding: 8px 10px; font-size: 13.5px;
+}
+.freq-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.freq-chip { border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: 999px; padding: 5px 10px; font-size: 12px; }
+.freq-chip .n { margin-left: 4px; color: var(--text-muted); }
+.freq-chip.on { border-color: var(--primary); background: var(--primary-dim); color: var(--primary); font-weight: 700; }
 
 .task-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 5px 2px; }
 .task-row .task-name { white-space: normal; overflow: visible; text-overflow: clip; padding-top: 3px; }
@@ -137,6 +161,13 @@ section.panel { display: flex; flex-direction: column; gap: 14px; }
 .task-mgmt-row.hidden-task { opacity: 0.45; }
 .task-mgmt-row .task-name { font-size: 13.5px; }
 .toggle-btn { flex: none; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: 7px; padding: 5px 10px; font-size: 12px; }
+.freq-badge { font-size: 10.5px; font-weight: 700; color: var(--text-muted); background: var(--surface-2); padding: 1px 6px; border-radius: 6px; }
+
+.import-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.5; }
+.import-textarea {
+  width: 100%; min-height: 90px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  border-radius: var(--radius-sm); padding: 10px; font-size: 13px; line-height: 1.5; resize: vertical; margin-bottom: 8px;
+}
 
 textarea.memo { width: 100%; min-height: 46vh; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); border-radius: var(--radius-sm); padding: 12px; font-size: 14px; line-height: 1.7; resize: vertical; }
 textarea.weekly-tasks { width: 100%; min-height: 220px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); border-radius: var(--radius-sm); padding: 12px; font-size: 14px; line-height: 1.7; resize: vertical; }

@@ -14,6 +14,35 @@ let reportOpen = false;
 let taskListCollapsed = false;
 let tickHandle = null;
 let toastTimer = null;
+let taskSearchQuery = "";
+let frequencyFilter = null;
+
+const FREQUENCY_ORDER = ["日次", "週次", "月次", "年次", "随時", "その他"];
+function normalizeFrequency(freq) {
+  if (!freq) return null;
+  if (freq.includes("日次")) return "日次";
+  if (freq.includes("週次")) return "週次";
+  if (freq.includes("月次")) return "月次";
+  if (freq.includes("年次")) return "年次";
+  if (freq.includes("随時") || freq.includes("不定期")) return "随時";
+  return "その他";
+}
+function loadCollapsedSubgroups() {
+  try {
+    const raw = localStorage.getItem("nippo-collapsed-subgroups");
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+function saveCollapsedSubgroups(set) {
+  try {
+    localStorage.setItem("nippo-collapsed-subgroups", JSON.stringify([...set]));
+  } catch (e) {
+    /* localStorageが使えない環境では折りたたみ状態を保存しないだけで動作は継続する */
+  }
+}
+let collapsedSubgroups = loadCollapsedSubgroups();
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -156,14 +185,43 @@ async function updateLog(id, taskId, startHM, endHM) {
     showToast("更新に失敗しました（開始時刻は終了時刻より前にしてください）");
   }
 }
-async function addTask(project, category, name) {
+async function addTask(project, category, name, frequency) {
   if (!project.trim() || !name.trim()) return;
   try {
-    await api("/tasks", { method: "POST", body: JSON.stringify({ project: project.trim(), category, name: name.trim() }) });
+    await api("/tasks", {
+      method: "POST",
+      body: JSON.stringify({ project: project.trim(), category, name: name.trim(), frequency: frequency?.trim() || undefined }),
+    });
     await loadAll();
     render();
   } catch (e) {
     showToast("タスクの追加に失敗しました");
+  }
+}
+
+function parseImportText(text) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.split("\t").map((c) => c.trim()))
+    .map((cols) => ({ frequency: cols[0] || "", project: cols[1] || "", name: (cols[2] || "").trim() }))
+    .filter((r) => r.project && r.name && r.name !== "-");
+}
+
+async function importTasks(rows) {
+  if (rows.length === 0) {
+    showToast("インポートできる行がありません");
+    return false;
+  }
+  try {
+    const items = rows.map((r) => ({ project: r.project, category: "作業", name: r.name, frequency: r.frequency || undefined }));
+    const res = await api("/tasks/import", { method: "POST", body: JSON.stringify({ items }) });
+    await loadAll();
+    render();
+    showToast(`${res.inserted}件登録しました（重複・空欄など${res.skipped}件はスキップ）`);
+    return true;
+  } catch (e) {
+    showToast("インポートに失敗しました");
+    return false;
   }
 }
 async function toggleTaskHidden(id, hidden) {
@@ -253,6 +311,136 @@ function renderLogin() {
   pw.focus();
 }
 
+function buildRecentTasksRow(act) {
+  const recent = state.tasks
+    .filter((t) => !t.hidden && t.useCount30d > 0 && !(act && act.taskId === t.id))
+    .sort((a, b) => b.useCount30d - a.useCount30d || new Date(b.lastUsedAt) - new Date(a.lastUsedAt))
+    .slice(0, 6);
+  if (recent.length === 0) return null;
+  const row = document.createElement("div");
+  row.className = "recent-row";
+  row.innerHTML = '<div class="recent-label">よく使う・最近使ったタスク</div><div class="recent-chips"></div>';
+  const chipWrap = row.querySelector(".recent-chips");
+  recent.forEach((t) => {
+    const idx = t.name.indexOf("-");
+    const itemName = idx > 0 ? t.name.slice(idx + 1) : t.name;
+    chipWrap.appendChild(
+      el(
+        `<button class="recent-chip" data-id="${t.id}"><span class="badge-mini">${esc(t.project)}</span>${esc(itemName)}</button>`
+      )
+    );
+  });
+  return row;
+}
+
+function buildFrequencyChips() {
+  const counts = new Map();
+  state.tasks
+    .filter((t) => !t.hidden)
+    .forEach((t) => {
+      const b = normalizeFrequency(t.frequency);
+      if (!b) return;
+      counts.set(b, (counts.get(b) || 0) + 1);
+    });
+  if (counts.size === 0) return null;
+  const wrap = document.createElement("div");
+  wrap.className = "freq-chips";
+  wrap.appendChild(el(`<button class="freq-chip${frequencyFilter === null ? " on" : ""}" data-freq="">すべて</button>`));
+  FREQUENCY_ORDER.forEach((b) => {
+    if (!counts.has(b)) return;
+    wrap.appendChild(
+      el(
+        `<button class="freq-chip${frequencyFilter === b ? " on" : ""}" data-freq="${esc(b)}">${esc(b)}<span class="n">${counts.get(b)}</span></button>`
+      )
+    );
+  });
+  return wrap;
+}
+
+function buildTaskListEl(act) {
+  const visibleTasks = state.tasks.filter((t) => !t.hidden);
+  const query = taskSearchQuery.trim().toLowerCase();
+  const searching = query.length > 0;
+  const matches = (t) => {
+    if (query && !(t.name.toLowerCase().includes(query) || t.project.toLowerCase().includes(query))) return false;
+    if (frequencyFilter && normalizeFrequency(t.frequency) !== frequencyFilter) return false;
+    return true;
+  };
+  const filteredTasks = visibleTasks.filter(matches);
+
+  const projects = [];
+  visibleTasks.forEach((t) => { if (!projects.includes(t.project)) projects.push(t.project); });
+
+  const wrap = document.createElement("div");
+  if (projects.length === 0) {
+    wrap.appendChild(el('<div class="empty">登録済みのタスクがありません</div>'));
+    return wrap;
+  }
+
+  const columnsWrap = document.createElement("div");
+  columnsWrap.className = "proj-columns";
+  let anyVisible = false;
+  projects.forEach((proj) => {
+    const projTasks = filteredTasks.filter((t) => t.project === proj);
+    if (projTasks.length === 0) return;
+    anyVisible = true;
+    const column = document.createElement("div");
+    column.className = "proj-group";
+    column.innerHTML = `<div class="proj-title"><span class="badge">${esc(proj)}</span></div>`;
+    ["作業", "MTG"].forEach((category) => {
+      const catTasks = projTasks.filter((t) => t.category === category);
+      if (catTasks.length === 0) return;
+      const catSection = document.createElement("div");
+      catSection.className = "cat-group";
+      catSection.innerHTML = `<div class="cat-group-head"><span class="cat-badge${category === "MTG" ? " mtg" : ""}">${esc(category)}</span></div>`;
+      const subgroups = [];
+      const subgroupByLabel = new Map();
+      catTasks.forEach((t) => {
+        const idx = t.name.indexOf("-");
+        const label = idx > 0 ? t.name.slice(0, idx) : null;
+        const itemName = idx > 0 ? t.name.slice(idx + 1) : t.name;
+        let sub = label !== null ? subgroupByLabel.get(label) : null;
+        if (!sub) {
+          sub = { label, items: [] };
+          subgroups.push(sub);
+          if (label !== null) subgroupByLabel.set(label, sub);
+        }
+        sub.items.push({ task: t, itemName });
+      });
+      subgroups.forEach((sub) => {
+        const key = `${proj}::${category}::${sub.label ?? ""}`;
+        const isCollapsed = !searching && sub.label && collapsedSubgroups.has(key);
+        if (sub.label) {
+          catSection.appendChild(
+            el(
+              `<button class="task-subgroup-label" data-key="${esc(key)}">${isCollapsed ? "▸" : "▾"} ${esc(sub.label)}<span class="subgroup-count">${sub.items.length}</span></button>`
+            )
+          );
+        }
+        if (!isCollapsed) {
+          sub.items.forEach(({ task: t, itemName }) => {
+            const row = document.createElement("div");
+            row.className = "task-row";
+            const isActive = act && act.taskId === t.id;
+            row.innerHTML =
+              `<span class="task-name">${esc(itemName)}</span>` +
+              `<button class="start-btn" ${isActive ? "disabled" : ""} data-id="${t.id}">${isActive ? "稼働中" : "開始"}</button>`;
+            catSection.appendChild(row);
+          });
+        }
+      });
+      column.appendChild(catSection);
+    });
+    columnsWrap.appendChild(column);
+  });
+  if (!anyVisible) {
+    wrap.appendChild(el('<div class="empty">条件に一致するタスクがありません</div>'));
+  } else {
+    wrap.appendChild(columnsWrap);
+  }
+  return wrap;
+}
+
 function renderTodayTab(container) {
   const act = activeLog();
   const card = document.createElement("div");
@@ -287,10 +475,6 @@ function renderTodayTab(container) {
     tickHandle = null;
   }
 
-  const visibleTasks = state.tasks.filter((t) => !t.hidden);
-  const projects = [];
-  visibleTasks.forEach((t) => { if (!projects.includes(t.project)) projects.push(t.project); });
-
   const block = document.createElement("div");
   block.className = "block";
   const head = el(
@@ -302,62 +486,71 @@ function renderTodayTab(container) {
     taskListCollapsed = !taskListCollapsed;
     render();
   });
+
   if (!taskListCollapsed) {
-    if (projects.length === 0) {
-      block.appendChild(el('<div class="empty">登録済みのタスクがありません</div>'));
-    }
-    const columnsWrap = document.createElement("div");
-    columnsWrap.className = "proj-columns";
-    projects.forEach((proj) => {
-      const column = document.createElement("div");
-      column.className = "proj-group";
-      column.innerHTML = `<div class="proj-title"><span class="badge">${esc(proj)}</span></div>`;
-      const projTasks = visibleTasks.filter((t) => t.project === proj);
-      ["作業", "MTG"].forEach((category) => {
-        const catTasks = projTasks.filter((t) => t.category === category);
-        if (catTasks.length === 0) return;
-        const catSection = document.createElement("div");
-        catSection.className = "cat-group";
-        catSection.innerHTML = `<div class="cat-group-head"><span class="cat-badge${category === "MTG" ? " mtg" : ""}">${esc(category)}</span></div>`;
-        const subgroups = [];
-        const subgroupByLabel = new Map();
-        catTasks.forEach((t) => {
-          const idx = t.name.indexOf("-");
-          const label = idx > 0 ? t.name.slice(0, idx) : null;
-          const itemName = idx > 0 ? t.name.slice(idx + 1) : t.name;
-          let sub = label !== null ? subgroupByLabel.get(label) : null;
-          if (!sub) {
-            sub = { label, items: [] };
-            subgroups.push(sub);
-            if (label !== null) subgroupByLabel.set(label, sub);
-          }
-          sub.items.push({ task: t, itemName });
-        });
-        subgroups.forEach((sub) => {
-          if (sub.label) catSection.appendChild(el(`<div class="task-subgroup-label">${esc(sub.label)}</div>`));
-          sub.items.forEach(({ task: t, itemName }) => {
-            const row = document.createElement("div");
-            row.className = "task-row";
-            const isActive = act && act.taskId === t.id;
-            row.innerHTML =
-              `<span class="task-name">${esc(itemName)}</span>` +
-              `<button class="start-btn" ${isActive ? "disabled" : ""} data-id="${t.id}">${isActive ? "稼働中" : "開始"}</button>`;
-            catSection.appendChild(row);
-          });
-        });
-        column.appendChild(catSection);
+    const recentRow = buildRecentTasksRow(act);
+    if (recentRow) block.appendChild(recentRow);
+
+    const controls = document.createElement("div");
+    controls.className = "task-picker-controls";
+    const searchInput = el(
+      `<input type="search" class="task-search" id="taskSearchInput" placeholder="タスク名で検索" value="${esc(taskSearchQuery)}">`
+    );
+    controls.appendChild(searchInput);
+    const freqChips = buildFrequencyChips();
+    if (freqChips) controls.appendChild(freqChips);
+    block.appendChild(controls);
+
+    const listContainer = document.createElement("div");
+    listContainer.className = "task-list-container";
+    block.appendChild(listContainer);
+
+    function attachListHandlers() {
+      listContainer.querySelectorAll(".start-btn:not([disabled])").forEach((b) => {
+        b.addEventListener("click", () => startTask(Number(b.getAttribute("data-id"))));
       });
-      columnsWrap.appendChild(column);
+      listContainer.querySelectorAll(".task-subgroup-label").forEach((b) => {
+        b.addEventListener("click", () => {
+          const key = b.getAttribute("data-key");
+          if (collapsedSubgroups.has(key)) collapsedSubgroups.delete(key);
+          else collapsedSubgroups.add(key);
+          saveCollapsedSubgroups(collapsedSubgroups);
+          refreshList();
+        });
+      });
+    }
+    function refreshList() {
+      listContainer.innerHTML = "";
+      listContainer.appendChild(buildTaskListEl(act));
+      attachListHandlers();
+    }
+    refreshList();
+
+    searchInput.addEventListener("input", () => {
+      taskSearchQuery = searchInput.value;
+      refreshList();
     });
-    block.appendChild(columnsWrap);
+    if (freqChips) {
+      freqChips.querySelectorAll(".freq-chip").forEach((b) => {
+        b.addEventListener("click", () => {
+          frequencyFilter = b.getAttribute("data-freq") || null;
+          freqChips.querySelectorAll(".freq-chip").forEach((c) => c.classList.remove("on"));
+          b.classList.add("on");
+          refreshList();
+        });
+      });
+    }
+    if (recentRow) {
+      recentRow.querySelectorAll(".recent-chip").forEach((b) => {
+        b.addEventListener("click", () => startTask(Number(b.getAttribute("data-id"))));
+      });
+    }
+
     const addLink = el('<button class="add-task-link">＋ 新しいタスクを登録（タスク管理タブ）</button>');
     addLink.addEventListener("click", () => { currentTab = "tasks"; render(); });
     block.appendChild(addLink);
   }
   container.appendChild(block);
-  block.querySelectorAll(".start-btn:not([disabled])").forEach((b) => {
-    b.addEventListener("click", () => startTask(Number(b.getAttribute("data-id"))));
-  });
 
   renderMemoBlock(container);
   renderWeeklyTasksBlock(container);
@@ -465,6 +658,7 @@ function renderTasksTab(container) {
     "</div>" +
     `<datalist id="projectOptions">${existingProjects.map((p) => `<option value="${esc(p)}">`).join("")}</datalist>` +
     '<input id="newName" placeholder="タスク名（例：経理-支払経費対応）">' +
+    '<input id="newFreq" placeholder="頻度（任意・例：月次）">' +
     '<button class="btn primary" id="addTaskBtn">タスクを追加</button>' +
     "</div>"
   );
@@ -474,7 +668,29 @@ function renderTasksTab(container) {
     const proj = form.querySelector("#newProj").value;
     const cat = form.querySelector("#newCat").value;
     const name = form.querySelector("#newName").value;
-    addTask(proj, cat, name);
+    const freq = form.querySelector("#newFreq").value;
+    addTask(proj, cat, name, freq);
+  });
+
+  const importBlock = document.createElement("div");
+  importBlock.className = "block";
+  importBlock.innerHTML =
+    "<h2>タスクの一括インポート</h2>" +
+    '<div class="import-hint">スプレッドシートの「頻度」「プロジェクト」「タスク名」の3列を選択してコピーし、そのまま下に貼り付けてください（区分はすべて「作業」として登録され、既に同じ内容のタスクがあれば自動でスキップされます）。</div>';
+  const importTa = el('<textarea class="import-textarea" placeholder="頻度[タブ]プロジェクト[タブ]タスク名"></textarea>');
+  const importBtn = el('<button class="btn primary" id="importBtn">貼り付けた内容をインポート</button>');
+  importBlock.appendChild(importTa);
+  importBlock.appendChild(importBtn);
+  container.appendChild(importBlock);
+  importBtn.addEventListener("click", async () => {
+    const rows = parseImportText(importTa.value);
+    importBtn.disabled = true;
+    importBtn.textContent = "インポート中…";
+    const ok = await importTasks(rows);
+    if (!ok) {
+      importBtn.disabled = false;
+      importBtn.textContent = "貼り付けた内容をインポート";
+    }
   });
 
   const listBlock = document.createElement("div");
@@ -485,7 +701,7 @@ function renderTasksTab(container) {
     row.className = "task-mgmt-row" + (t.hidden ? " hidden-task" : "");
     row.innerHTML =
       `<span class="cat-badge${t.category === "MTG" ? " mtg" : ""}">${esc(t.category)}</span>` +
-      `<span class="task-name" style="flex:1">【${esc(t.project)}】${esc(t.name)}</span>` +
+      `<span class="task-name" style="flex:1">【${esc(t.project)}】${esc(t.name)}${t.frequency ? ` <span class="freq-badge">${esc(t.frequency)}</span>` : ""}</span>` +
       `<button class="toggle-btn" data-id="${t.id}" data-hidden="${t.hidden ? "0" : "1"}">${t.hidden ? "再表示" : "非表示"}</button>`;
     listBlock.appendChild(row);
   });
