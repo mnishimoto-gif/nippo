@@ -306,22 +306,50 @@ function renderTodayTab(container) {
     if (projects.length === 0) {
       block.appendChild(el('<div class="empty">登録済みのタスクがありません</div>'));
     }
+    const columnsWrap = document.createElement("div");
+    columnsWrap.className = "proj-columns";
     projects.forEach((proj) => {
-      const group = document.createElement("div");
-      group.className = "proj-group";
-      group.innerHTML = `<div class="proj-title"><span class="badge">${esc(proj)}</span></div>`;
-      visibleTasks.filter((t) => t.project === proj).forEach((t) => {
-        const row = document.createElement("div");
-        row.className = "task-row";
-        const isActive = act && act.taskId === t.id;
-        row.innerHTML =
-          `<span class="cat-badge${t.category === "MTG" ? " mtg" : ""}">${esc(t.category)}</span>` +
-          `<span class="task-name">${esc(t.name)}</span>` +
-          `<button class="start-btn" ${isActive ? "disabled" : ""} data-id="${t.id}">${isActive ? "稼働中" : "開始"}</button>`;
-        group.appendChild(row);
+      const column = document.createElement("div");
+      column.className = "proj-group";
+      column.innerHTML = `<div class="proj-title"><span class="badge">${esc(proj)}</span></div>`;
+      const projTasks = visibleTasks.filter((t) => t.project === proj);
+      ["作業", "MTG"].forEach((category) => {
+        const catTasks = projTasks.filter((t) => t.category === category);
+        if (catTasks.length === 0) return;
+        const catSection = document.createElement("div");
+        catSection.className = "cat-group";
+        catSection.innerHTML = `<div class="cat-group-head"><span class="cat-badge${category === "MTG" ? " mtg" : ""}">${esc(category)}</span></div>`;
+        const subgroups = [];
+        const subgroupByLabel = new Map();
+        catTasks.forEach((t) => {
+          const idx = t.name.indexOf("-");
+          const label = idx > 0 ? t.name.slice(0, idx) : null;
+          const itemName = idx > 0 ? t.name.slice(idx + 1) : t.name;
+          let sub = label !== null ? subgroupByLabel.get(label) : null;
+          if (!sub) {
+            sub = { label, items: [] };
+            subgroups.push(sub);
+            if (label !== null) subgroupByLabel.set(label, sub);
+          }
+          sub.items.push({ task: t, itemName });
+        });
+        subgroups.forEach((sub) => {
+          if (sub.label) catSection.appendChild(el(`<div class="task-subgroup-label">${esc(sub.label)}</div>`));
+          sub.items.forEach(({ task: t, itemName }) => {
+            const row = document.createElement("div");
+            row.className = "task-row";
+            const isActive = act && act.taskId === t.id;
+            row.innerHTML =
+              `<span class="task-name">${esc(itemName)}</span>` +
+              `<button class="start-btn" ${isActive ? "disabled" : ""} data-id="${t.id}">${isActive ? "稼働中" : "開始"}</button>`;
+            catSection.appendChild(row);
+          });
+        });
+        column.appendChild(catSection);
       });
-      block.appendChild(group);
+      columnsWrap.appendChild(column);
     });
+    block.appendChild(columnsWrap);
     const addLink = el('<button class="add-task-link">＋ 新しいタスクを登録（タスク管理タブ）</button>');
     addLink.addEventListener("click", () => { currentTab = "tasks"; render(); });
     block.appendChild(addLink);
