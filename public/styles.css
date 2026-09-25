@@ -46,7 +46,7 @@ body {
 }
 #app { max-width: 640px; margin: 0 auto; padding: 0 16px 48px; min-height: 100%; }
 button { font-family: inherit; cursor: pointer; }
-input, select, textarea { font-family: inherit; }
+input, select, textarea { font-family: "Noto Sans JP", "Hiragino Sans", sans-serif; }
 [hidden] { display: none !important; }
 
 header.top {
